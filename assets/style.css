@@ -203,6 +203,14 @@ a { color: var(--primary); text-decoration: none; }
 .vcard-hint { margin-top: 22px; font-size: 12.5px; color: var(--text-3); }
 .vcard-flip { animation: flip .32s ease; }
 @keyframes flip { from { transform: rotateX(72deg); opacity: .3; } to { transform: rotateX(0); opacity: 1; } }
+/* 真题例句 */
+.vex-box { margin-top: 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 16px; text-align: left; }
+.vex-title { font-size: 12.5px; font-weight: 600; color: var(--primary-dark); margin-bottom: 9px; }
+.vex { margin-bottom: 11px; }
+.vex:last-child { margin-bottom: 0; }
+.vex-t { font-size: 13px; line-height: 1.8; color: var(--text); }
+.vex-s { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+
 .vocab-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
 .vbtn { padding: 13px; border-radius: var(--radius); border: 1px solid var(--border-strong); font-size: 13.5px; font-weight: 500; transition: all .15s; }
 .vbtn small { display: block; font-size: 11px; font-weight: 400; color: var(--text-3); margin-top: 1px; }

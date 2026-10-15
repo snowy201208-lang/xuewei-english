@@ -137,7 +137,7 @@
   };
 
   const MODULES = [
-    { key: 'vocab', name: '单词速记', ico: '📚', color: '#7c3aed', bg: '#f2ecfe', desc: '五星必考词 · 音标 · 发音' },
+    { key: 'vocab', name: '单词速记', ico: '📚', color: '#7c3aed', bg: '#f2ecfe', desc: '卡片翻转 · 释义选择题' },
     { key: 'situation', name: '情景题', ico: '💬', color: '#0f766e', bg: '#e6f7f4', desc: '交际用语 · 对话补全' },
     { key: 'reading', name: '阅读题', ico: '📖', color: '#b45309', bg: '#fef4e6', desc: '篇章阅读 · 主旨细节' },
     { key: 'cloze', name: '完型填空', ico: '🧩', color: '#1d4ed8', bg: '#eaf1fe', desc: '上下文逻辑 · 词义辨析' },
@@ -225,7 +225,7 @@
     return h;
   }
 
-  const State = { sel: {}, checked: {} };
+  const State = { sel: {}, checked: {}, vocabMode: 'card', vocabQuiz: null };
 
   /* ============================================================
      视图
@@ -252,7 +252,7 @@
     return `
     <div class="stat-row" style="margin-bottom:20px">
       <div class="stat"><div class="stat-num">${totalQ}</div><div class="stat-label">已收录题目</div><div class="stat-delta tiny">模拟卷/真题 ${paperN} 套 · 语法专项 ${grammarN} 题</div></div>
-      <div class="stat"><div class="stat-num">${Bank.vocab.length}</div><div class="stat-label">五星必考词汇</div><div class="stat-delta tiny">含音标 · 支持朗读</div></div>
+      <div class="stat"><div class="stat-num">${Bank.vocab.length}</div><div class="stat-label">五星必考词汇</div><div class="stat-delta tiny">卡片 / 释义选择题双模式</div></div>
       <div class="stat"><div class="stat-num">${d.today.n}</div><div class="stat-label">今日已练题数</div><div class="stat-delta tiny">正确率 ${correctRate}%</div></div>
       <div class="stat"><div class="stat-num">${d.wrong.length}</div><div class="stat-label">错题本</div><div class="stat-delta tiny">收藏 ${d.star.length} 题</div></div>
     </div>
@@ -270,14 +270,111 @@
   }
 
   /* ---------- 单词速记 ---------- */
+  function shuffleArr(a) {
+    const r = a.slice();
+    for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = r[i]; r[i] = r[j]; r[j] = t; }
+    return r;
+  }
+
+  /** 生成一道「看单词选释义」题：正确答案 + 3 个来自其他单词的干扰释义 */
+  function makeVocabQuiz(idx) {
+    const list = Bank.vocab;
+    const w = list[idx % list.length];
+    const seen = new Set([w.meaning]);
+    const pool = [];
+    let guard = 0;
+    while (pool.length < 3 && guard < 800) {
+      guard++;
+      const r = list[Math.floor(Math.random() * list.length)];
+      if (r.word === w.word || seen.has(r.meaning)) continue;
+      seen.add(r.meaning); pool.push(r.meaning);
+    }
+    while (pool.length < 3) pool.push('（暂无释义）');
+    const opts = shuffleArr([w.meaning].concat(pool));
+    return {
+      _idx: idx % list.length, word: w.word, phonetic: w.phonetic || '',
+      meaning: w.meaning, examples: w.examples || [],
+      options: opts, answer: LETTERS[opts.indexOf(w.meaning)], sel: '', done: false
+    };
+  }
+
+  /** 真题例句区块（来自模拟卷/真题原文） */
+  function vocabExamples(w) {
+    const ex = w.examples || [];
+    if (!ex.length) return '';
+    return `<div class="vex-box">
+      <div class="vex-title">真题例句 · 来自试卷原文</div>
+      ${ex.slice(0, 2).map(e => `<div class="vex">
+        <div class="vex-t">${esc(e.text)}</div>
+        <div class="vex-s">— ${esc(e.source)}</div>
+      </div>`).join('')}
+    </div>`;
+  }
+
   function viewVocab() {
     const list = Bank.vocab;
     const d = store.load();
     const i = App.cur.vocab % list.length;
     const w = list[i];
-    const flipped = !!State.vocabFlip;
-    const st = d.vocab[w.word];
     const known = Object.values(d.vocab).filter(v => v === 'k').length;
+    const st = d.vocab[w.word];
+    const mode = State.vocabMode || 'card';
+
+    const switchHtml = `<div class="mode-switch">
+      <button class="${mode === 'card' ? 'on' : ''}" data-vocab-mode="card">卡片模式</button>
+      <button class="${mode === 'quiz' ? 'on' : ''}" data-vocab-mode="quiz">释义选择题</button>
+    </div>`;
+    const head = `
+    <div class="row row-wrap" style="margin-bottom:14px">
+      ${switchHtml}
+      <span class="point-tag">第 ${i + 1} / ${list.length}</span>
+      <span class="tiny">已掌握 ${known} 词${st ? ' · 上次标记：' + ({ k: '认识', f: '模糊', u: '不认识' }[st] || '') : ''}</span>
+      <span class="spacer"></span>
+      <button class="btn btn-sm" data-vocab-jump="random">🎲 随机</button>
+      <button class="btn btn-sm" data-vocab-jump="unknown">↻ 只看未掌握</button>
+    </div>`;
+
+    if (mode === 'quiz') {
+      if (!State.vocabQuiz || State.vocabQuiz._idx !== i) State.vocabQuiz = makeVocabQuiz(i);
+      const q = State.vocabQuiz;
+      const optHtml = q.options.map((o, k) => {
+        const L = LETTERS[k];
+        let cls = 'opt';
+        if (q.sel === L) cls += ' sel';
+        if (q.done) {
+          if (L === q.answer) cls += ' right';
+          else if (q.sel === L) cls += ' wrong';
+          else cls += ' dim';
+        }
+        return `<div class="${cls}" data-vocab-pick="${L}">
+          <span class="opt-key">${L}</span><span class="opt-txt">${esc(o)}</span></div>`;
+      }).join('');
+      const result = q.done
+        ? `<div class="analysis">
+             <div class="analysis-title">${q.sel === q.answer ? '✅ 答对了' : '❌ 答错了'} · 正确答案 ${q.answer}</div>
+             <div class="analysis-body"><b>${esc(q.word)}</b> ${esc(q.phonetic)} — ${esc(q.meaning)}</div>
+           </div>`
+        : '';
+      return `${head}
+      <div class="vocab-stage">
+        <div class="vcard">
+          <div class="vcard-word">${esc(q.word)}</div>
+          <div class="vcard-phon">${esc(q.phonetic || '—')}</div>
+          <div class="vcard-say"><button class="btn btn-sm" data-say="${esc(q.word)}">🔊 朗读</button></div>
+          <div class="vcard-hint">下面哪个是它的正确释义？</div>
+        </div>
+        <div class="opts" style="margin-top:16px">${optHtml}</div>
+        ${result}
+        ${q.done ? vocabExamples(q) : ''}
+        <div class="row" style="justify-content:center;margin-top:14px;gap:8px">
+          <button class="btn btn-sm" data-vocab-nav="-1">← 上一个</button>
+          <button class="btn btn-sm" data-vocab-shuffle>🔀 换一批选项</button>
+          <button class="btn btn-primary btn-sm" data-vocab-next>${q.done ? '下一题 →' : '跳过 →'}</button>
+        </div>
+      </div>`;
+    }
+
+    const flipped = !!State.vocabFlip;
     const card = flipped
       ? `<div class="vcard vcard-flip">
            <div class="vcard-meaning">${esc(w.meaning)}</div>
@@ -289,16 +386,10 @@
            <div class="vcard-say"><button class="btn btn-sm" data-say="${esc(w.word)}">🔊 朗读</button></div>
            <div class="vcard-hint">点击「显示释义」或空格键翻转</div>
          </div>`;
-    return `
-    <div class="row" style="margin-bottom:14px">
-      <span class="point-tag">第 ${i + 1} / ${list.length} 张</span>
-      <span class="tiny">已掌握 ${known} 词${st ? ' · 上次标记：' + ({ k: '认识', f: '模糊', u: '不认识' }[st] || '') : ''}</span>
-      <span class="spacer"></span>
-      <button class="btn btn-sm" data-vocab-jump="random">🎲 随机</button>
-      <button class="btn btn-sm" data-vocab-jump="unknown">↻ 只看未掌握</button>
-    </div>
+    return `${head}
     <div class="vocab-stage">
       ${card}
+      ${flipped ? vocabExamples(w) : ''}
       <div class="vocab-actions">
         <button class="vbtn vbtn-unk" data-vocab-mark="u">不认识<small>加入复习</small></button>
         <button class="vbtn vbtn-fuz" data-vocab-mark="f">模糊<small>稍后再看</small></button>
@@ -956,13 +1047,22 @@
       if (say) { speak(say.dataset.say); return; }
 
       // 单词
-      if (e.target.closest('[data-vocab-shuffle]')) { State.vocabFlip = !State.vocabFlip; render(); return; }
+      const vmode = e.target.closest('[data-vocab-mode]');
+      if (vmode) { State.vocabMode = vmode.dataset.vocabMode; State.vocabQuiz = null; State.vocabFlip = false; render(); return; }
+      if (e.target.closest('[data-vocab-shuffle]')) {
+        if (State.vocabMode === 'quiz') State.vocabQuiz = null;
+        else State.vocabFlip = !State.vocabFlip;
+        render(); return;
+      }
       const vnav = e.target.closest('[data-vocab-nav]');
-      if (vnav) { App.cur.vocab = (App.cur.vocab + Number(vnav.dataset.vocabNav) + Bank.vocab.length) % Bank.vocab.length; State.vocabFlip = false; render(); return; }
+      if (vnav) { App.cur.vocab = (App.cur.vocab + Number(vnav.dataset.vocabNav) + Bank.vocab.length) % Bank.vocab.length; State.vocabFlip = false; State.vocabQuiz = null; render(); return; }
       const vjump = e.target.closest('[data-vocab-jump]');
       if (vjump) { vocabJump(vjump.dataset.vocabJump); return; }
       const vmark = e.target.closest('[data-vocab-mark]');
       if (vmark) { vocabMark(vmark.dataset.vocabMark); return; }
+      const vpick = e.target.closest('[data-vocab-pick]');
+      if (vpick) { vocabPick(vpick.dataset.vocabPick); return; }
+      if (e.target.closest('[data-vocab-next]')) { vocabNext(); return; }
 
       // 客观题选项
       const opt = e.target.closest('[data-opt]');
@@ -1010,10 +1110,16 @@
 
     document.addEventListener('keydown', e => {
       if (App.route === 'vocab') {
-        if (e.code === 'Space') { e.preventDefault(); State.vocabFlip = !State.vocabFlip; render(); }
-        if (e.key === '1') vocabMark('u');
-        if (e.key === '2') vocabMark('f');
-        if (e.key === '3') vocabMark('k');
+        if (State.vocabMode === 'quiz') {
+          if (e.code === 'Space') { e.preventDefault(); vocabNext(); }
+          const n = ['1', '2', '3', '4'].indexOf(e.key);
+          if (n >= 0) vocabPick(LETTERS[n]);
+        } else {
+          if (e.code === 'Space') { e.preventDefault(); State.vocabFlip = !State.vocabFlip; render(); }
+          if (e.key === '1') vocabMark('u');
+          if (e.key === '2') vocabMark('f');
+          if (e.key === '3') vocabMark('k');
+        }
       }
     });
 
@@ -1060,6 +1166,35 @@
     store.save();
     App.cur.vocab = (App.cur.vocab + 1) % Bank.vocab.length;
     State.vocabFlip = false;
+    State.vocabQuiz = null;
+    render();
+  }
+
+  /** 释义选择题：选中某个选项 */
+  function vocabPick(L) {
+    const q = State.vocabQuiz;
+    if (!q || q.done) return;
+    q.sel = L;
+    q.done = true;
+    const ok = L === q.answer;
+    store.hit('vocab', ok);
+    if (!ok) {
+      store.wrongAdd({
+        id: 'vq_' + q.word, type: 'vocab',
+        stem: q.word + ' 的正确释义是？',
+        options: q.options.map((o, i) => LETTERS[i] + '. ' + o),
+        answer: q.answer,
+        explain: q.word + ' ' + q.phonetic + ' — ' + q.meaning,
+        paper: '单词速记 · 释义选择题'
+      });
+    }
+    render();
+  }
+
+  /** 释义选择题：下一题 */
+  function vocabNext() {
+    App.cur.vocab = (App.cur.vocab + 1) % Bank.vocab.length;
+    State.vocabQuiz = null;
     render();
   }
 
@@ -1071,7 +1206,7 @@
       App.cur.vocab = idx >= 0 ? idx : Bank.vocab.findIndex(w => d.vocab[w.word] !== 'k');
       if (App.cur.vocab < 0) { toast('全部单词都已掌握！'); return; }
     }
-    State.vocabFlip = false; render();
+    State.vocabFlip = false; State.vocabQuiz = null; render();
   }
 
   function speak(text) {
