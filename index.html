@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学位英语冲刺工作台</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div id="loading" style="position:fixed;inset:0;background:#f4f6f9;display:flex;align-items:center;justify-content:center;z-index:9999;color:#64707f;font-size:14px">
+  正在加载题库…
+</div>
+
+<div class="app">
+  <aside class="sidebar open" id="sidebar">
+    <div class="brand">
+      <div class="brand-logo">学</div>
+      <div>
+        <div class="brand-name">学位英语冲刺</div>
+        <div class="brand-sub">个人工作台</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="btn btn-ghost btn-sm menu-btn" id="menuBtn">☰</button>
+      <div>
+        <div class="topbar-title" id="topTitle">学习总览</div>
+        <div class="topbar-crumb" id="topCrumb">学位英语冲刺工作台</div>
+      </div>
+      <div class="topbar-right">
+        <span class="tiny" id="todayHint"></span>
+      </div>
+    </header>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+
+<script src="data/vocab.js"></script>
+<script src="data/papers.js"></script>
+<script src="data/real.js"></script>
+<script src="data/situation.js"></script>
+<script src="data/grammar.js"></script>
+<script src="data/writing.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
